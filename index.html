@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Catch the Emojis Game</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      font-family: sans-serif;
+      transition: background-color 1s;
+    }
+    canvas {
+      display: block;
+      background-color: #d0f0fd;
+    }
+    #scoreBoard {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      color: #000;
+      font-size: 24px;
+      font-weight: bold;
+      z-index: 10;
+      background: rgba(255, 255, 255, 0.7);
+      padding: 6px 12px;
+      border-radius: 8px;
+    }
+    #gameOver {
+      position: absolute;
+      top: 40%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 48px;
+      color: red;
+      display: none;
+      z-index: 20;
+      background: rgba(255,255,255,0.9);
+      padding: 20px 40px;
+      border-radius: 12px;
+      font-weight: bold;
+      user-select: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="scoreBoard">Score: 0</div>
+  <div id="gameOver">💣 Game Over</div>
+  <canvas id="gameCanvas"></canvas>
+
+  <script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+    const scoreBoard = document.getElementById("scoreBoard");
+    const gameOverDiv = document.getElementById("gameOver");
+
+    let width, height;
+    function resize() {
+      width = window.innerWidth;
+      height = window.innerHeight;
+      canvas.width = width;
+      canvas.height = height;
+      basket.y = height - basket.height - 10;
+    }
+    window.addEventListener("resize", resize);
+
+    // Player basket
+    const basket = {
+      x: 0,
+      y: 0,
+      width: 100,
+      height: 80,
+      emoji: "🧺",
+    };
+
+    // Objects that fall
+    let fallingObjects = [];
+
+    // Game state
+    let score = 0;
+    let gameOver = false;
+
+    // Speed and spawn rate
+    let fallSpeed = 2;
+    let spawnIntervalMs = 2000;
+    let spawnIntervalId;
+
+    // Background colors
+    const bgColors = ["#d0f0fd", "#ffe4b5", "#e6ffe6", "#fff0f5", "#f0e68c"];
+    let bgIndex = 0;
+
+    // Object types and counts for weighted spawn
+    const objectTypes = [
+      { emoji: "🍎", points: 1, count: 3 },      // Apple
+      { emoji: "⚽", points: 2, count: 2 },      // Football
+      { emoji: "💎", points: 3, count: 1 },      // Diamond
+      { emoji: "🔪", points: -2, count: 2 },     // Knife
+      { emoji: "💀", points: -3, count: 1 },     // Skull
+      { emoji: "💣", points: "gameover", count:1 } // Bomb
+    ];
+
+    // Initialize
+    resize();
+    basket.x = width / 2 - basket.width / 2;
+
+    // Function to create objects with weighted chances
+    function createObject() {
+      const pool = [];
+      objectTypes.forEach(obj => {
+        for(let i=0; i < obj.count; i++) {
+          pool.push(obj);
+        }
+      });
+      const chosen = pool[Math.floor(Math.random() * pool.length)];
+      fallingObjects.push({
+        x: Math.random() * (width - 40),
+        y: -40,
+        size: 40,
+        emoji: chosen.emoji,
+        points: chosen.points
+      });
+    }
+
+    // Start spawning objects with current spawn interval
+    function startSpawning() {
+      if(spawnIntervalId) clearInterval(spawnIntervalId);
+      spawnIntervalId = setInterval(createObject, spawnIntervalMs);
+    }
+    startSpawning();
+
+    // Background color changer every 60 seconds
+    setInterval(() => {
+      bgIndex = (bgIndex + 1) % bgColors.length;
+      document.body.style.backgroundColor = bgColors[bgIndex];
+    }, 60000);
+
+    // Increase speed and spawn rate every 30 seconds
+    setInterval(() => {
+      fallSpeed *= 2;
+      spawnIntervalMs = Math.max(300, spawnIntervalMs / 2);
+      startSpawning();
+    }, 30000);
+
+    // Draw basket
+    function drawBasket() {
+      ctx.font = "60px serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "top";
+      ctx.fillText(basket.emoji, basket.x + basket.width/2, basket.y);
+    }
+
+    // Draw all objects
+    function drawObjects() {
+      ctx.font = "40px serif";
+      ctx.textAlign = "left";
+      ctx.textBaseline = "top";
+      fallingObjects.forEach(obj => {
+        ctx.fillText(obj.emoji, obj.x, obj.y);
+      });
+    }
+
+    // Update object positions and check collisions
+    function updateObjects() {
+      for(let i=fallingObjects.length - 1; i >= 0; i--) {
+        let obj = fallingObjects[i];
+        obj.y += fallSpeed;
+
+        // Collision detection (with some leniency)
+        if (
+          obj.y + obj.size > basket.y + 10 &&   // slightly above basket top
+          obj.y < basket.y + basket.height &&
+          obj.x + obj.size > basket.x + 10 &&   // slightly inside basket left
+          obj.x < basket.x + basket.width - 10
+        ) {
+          if(obj.points === "gameover") {
+            gameOver = true;
+            gameOverDiv.style.display = "block";
+          } else {
+            score += obj.points;
+            if(score < 0) score = 0;
+            scoreBoard.textContent = `Score: ${score}`;
+          }
+          fallingObjects.splice(i, 1);
+          continue;
+        }
+
+        // Remove objects that fell below screen
+        if(obj.y > height) {
+          fallingObjects.splice(i, 1);
+        }
+      }
+    }
+
+    // Game Loop
+    function gameLoop() {
+      if(gameOver) return;
+
+      ctx.clearRect(0, 0, width, height);
+      drawBasket();
+      drawObjects();
+      updateObjects();
+
+      requestAnimationFrame(gameLoop);
+    }
+
+    // Controls - mouse & touch
+    document.addEventListener("mousemove", e => {
+      basket.x = e.clientX - basket.width / 2;
+      if(basket.x < 0) basket.x = 0;
+      if(basket.x + basket.width > width) basket.x = width - basket.width;
+    });
+    document.addEventListener("touchmove", e => {
+      let touch = e.touches[0];
+      basket.x = touch.clientX - basket.width / 2;
+      if(basket.x < 0) basket.x = 0;
+      if(basket.x + basket.width > width) basket.x = width - basket.width;
+    }, {passive: false});
+
+    gameLoop();
+
+  </script>
+</body>
+</html>
